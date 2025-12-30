@@ -1,0 +1,32 @@
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
+# dependencies
+old.yarn.lock
+/node_modules
+/**/node_modules
+/npm-debug.log*
+/yarn-error.log
+/package-lock.json
+/mock
+.vscode/
+.roo/
+
+# production
+/dist
+**/dist
+/build
+
+# misc
+.DS_Store
+.idea
+
+# local env files
+.env.local
+.env.*.local
+
+# lang scripts
+lang/*.xlsx
+
+.__mf__temp
+stats.html
+
