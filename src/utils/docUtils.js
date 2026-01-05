@@ -13,8 +13,20 @@ export async function ensureDir(dirPath) {
 
 /**
  * 字符串转 slug（用于文件名）
+ * 支持中文和英文，使用时间戳保证唯一性
  */
 export function slugify(text) {
+  // 如果包含中文，使用拼音或者时间戳
+  const hasChinese = /[\u4e00-\u9fa5]/.test(text);
+  
+  if (hasChinese) {
+    // 对于中文，使用时间戳 + 原始文本的前几个字符
+    const timestamp = Date.now();
+    const prefix = text.slice(0, 10); // 取前10个字符
+    return `${timestamp}-${prefix}`;
+  }
+  
+  // 英文：转小写并替换特殊字符
   return text
     .toLowerCase()
     .trim()

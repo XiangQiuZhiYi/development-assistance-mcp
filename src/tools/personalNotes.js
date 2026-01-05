@@ -1,296 +1,269 @@
+import { ensureDir, slugify, scanMarkdownFiles } from '../utils/docUtils.js';
+import { fileExists } from '../utils/fileUtils.js';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { fileExists } from '../utils/fileUtils.js';
 
 /**
- * 初始化个人开发笔记文件
- */
-async function initPersonalNotes(projectPath) {
-  const vscodeDir = path.join(projectPath, '.vscode');
-  // 确保 .vscode 目录存在
-  if (!await fileExists(vscodeDir)) {
-    await import('node:fs/promises').then(m => m.default.mkdir(vscodeDir, { recursive: true }));
-  }
-  const notesPath = path.join(vscodeDir, 'PERSONAL_DEV_NOTES.md');
-  
-  if (await fileExists(notesPath)) {
-    return notesPath;
-  }
-
-  const initialContent = `# 个人开发笔记
-
-> 记录开发过程中积累的优质组件、工具函数、技巧等
-
-**创建时间**: ${new Date().toISOString().split('T')[0]}
-
----
-
-## 📦 常用组件
-
-_记录可复用的优质组件_
-
----
-
-## 🛠️ 工具函数
-
-_记录通用的工具函数_
-
----
-
-## 🎣 自定义 Hooks
-
-_记录自定义的 React Hooks_
-
----
-
-## 🎨 样式方案
-
-_记录常用的样式技巧和方案_
-
----
-
-## 💡 开发技巧
-
-_记录开发过程中的小技巧和最佳实践_
-
----
-
-## 🐛 问题解决方案
-
-_记录遇到的问题及解决方案_
-
----
-
-*此文档用于个人开发经验积累，与 PROJECT_GUIDE.md 互补*
-`;
-
-  await fs.writeFile(notesPath, initialContent, 'utf-8');
-  return notesPath;
-}
-
-/**
- * 添加代码片段到个人笔记
+ * 添加个人代码片段
  */
 export async function addPersonalSnippet(projectPath, snippet) {
-  const notesPath = await initPersonalNotes(projectPath);
-  let content = await fs.readFile(notesPath, 'utf-8');
-
   const { category, title, description, code, language = 'typescript', tags = [], notes } = snippet;
 
-  // 确定分类对应的章节
-  const categoryMapping = {
-    'component': '## 📦 常用组件',
-    'function': '## 🛠️ 工具函数',
-    'hook': '## 🎣 自定义 Hooks',
-    'style': '## 🎨 样式方案',
-    'tip': '## 💡 开发技巧',
-    'solution': '## 🐛 问题解决方案',
-  };
-
-  const sectionTitle = categoryMapping[category] || '## 📦 常用组件';
+  const vscodeDir = path.join(projectPath, '.vscode');
+  const snippetsDir = path.join(vscodeDir, 'snippets', category);
   
+  await ensureDir(snippetsDir);
+
+  // 生成文件名：slug.md
+  const slug = slugify(title);
+  const fileName = `${slug}.md`;
+  const filePath = path.join(snippetsDir, fileName);
+
   // 生成片段内容
-  const timestamp = new Date().toISOString().split('T')[0];
-  const snippetContent = `
-### ${title}
+  const content = `# ${title}
 
-**描述**: ${description}
+**分类**: ${getCategoryName(category)}  
+**描述**: ${description}  
+${tags.length > 0 ? `**标签**: ${tags.join(', ')}  \n` : ''}
+**添加时间**: ${new Date().toISOString().split('T')[0]}
 
-${tags.length > 0 ? `**标签**: ${tags.map(t => `\`${t}\``).join(', ')}\n` : ''}
-**代码**:
+---
+
+## 代码
+
 \`\`\`${language}
 ${code}
 \`\`\`
 
-${notes ? `**使用说明**:\n${notes}\n` : ''}
-**添加时间**: ${timestamp}
+${notes ? `## 使用说明\n\n${notes}\n` : ''}
 
 ---
+
+[返回个人笔记](../PERSONAL_NOTES.md)
 `;
 
-  // 找到对应章节并插入
-  const sectionIndex = content.indexOf(sectionTitle);
-  if (sectionIndex === -1) {
-    throw new Error(`未找到分类章节: ${category}`);
-  }
+  await fs.writeFile(filePath, content, 'utf-8');
 
-  // 找到章节后第一个 "---" 标记的位置（章节说明后）
-  const afterSectionTitle = sectionIndex + sectionTitle.length;
-  const descriptionEndIndex = content.indexOf('\n---\n', afterSectionTitle);
-  
-  if (descriptionEndIndex === -1) {
-    throw new Error(`章节格式错误: ${category}`);
-  }
+  // 更新主索引
+  await updatePersonalNotesIndex(vscodeDir);
 
-  const insertPosition = descriptionEndIndex + 6; // '\n---\n'.length + 1
+  const indexPath = path.join(vscodeDir, 'PERSONAL_NOTES.md');
 
-  // 插入新内容
-  const updatedContent = 
-    content.slice(0, insertPosition) + 
-    snippetContent + 
-    content.slice(insertPosition);
-
-  await fs.writeFile(notesPath, updatedContent, 'utf-8');
-
-  return {
-    success: true,
-    path: notesPath,
-    category,
+  return { 
+    success: true, 
+    filePath: filePath,
+    indexPath: indexPath,
   };
 }
 
 /**
  * 读取个人笔记
  */
-export async function readPersonalNotes(projectPath, options = {}) {
-  const notesPath = path.join(projectPath, '.vscode', 'PERSONAL_DEV_NOTES.md');
+export async function readPersonalNotes(projectPath, category) {
+  const vscodeDir = path.join(projectPath, '.vscode');
+  const notesPath = path.join(vscodeDir, 'PERSONAL_NOTES.md');
   
   if (!await fileExists(notesPath)) {
     return {
       exists: false,
       path: notesPath,
       content: null,
-      message: '个人笔记不存在，添加第一个片段后将自动创建',
     };
   }
 
-  let content = await fs.readFile(notesPath, 'utf-8');
-
-  // 如果指定了分类，只返回该分类内容
-  if (options.category) {
-    const categoryMapping = {
-      'component': '## 📦 常用组件',
-      'function': '## 🛠️ 工具函数',
-      'hook': '## 🎣 自定义 Hooks',
-      'style': '## 🎨 样式方案',
-      'tip': '## 💡 开发技巧',
-      'solution': '## 🐛 问题解决方案',
-    };
-
-    const sectionTitle = categoryMapping[options.category];
-    if (sectionTitle) {
-      const sectionRegex = new RegExp(
-        `${sectionTitle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}([\\s\\S]*?)(?=^## |$)`,
-        'm'
-      );
-      const match = content.match(sectionRegex);
-      content = match ? match[0] : `未找到分类: ${options.category}`;
+  // 如果指定了分类，读取该分类下的所有片段
+  if (category) {
+    const categoryDir = path.join(vscodeDir, 'snippets', category);
+    if (!await fileExists(categoryDir)) {
+      return {
+        exists: true,
+        path: categoryDir,
+        content: `分类 "${getCategoryName(category)}" 下暂无片段\n`,
+      };
     }
+
+    const files = await scanMarkdownFiles(categoryDir);
+    
+    if (files.length === 0) {
+      return {
+        exists: true,
+        path: categoryDir,
+        content: `分类 "${getCategoryName(category)}" 下暂无片段\n`,
+      };
+    }
+
+    // 返回该分类下所有片段的列表
+    let content = `# ${getCategoryName(category)}\n\n`;
+    for (const file of files) {
+      content += `- [${file.title}](./snippets/${category}/${file.name})\n`;
+    }
+    
+    return { exists: true, path: categoryDir, content };
   }
 
-  return {
-    exists: true,
-    path: notesPath,
-    content,
-  };
+  // 读取主索引
+  const content = await fs.readFile(notesPath, 'utf-8');
+  return { exists: true, path: notesPath, content };
 }
 
 /**
- * 搜索个人笔记中的片段
+ * 搜索个人片段
  */
 export async function searchPersonalSnippets(projectPath, keyword) {
-  const notesPath = path.join(projectPath, '.vscode', 'PERSONAL_DEV_NOTES.md');
+  const vscodeDir = path.join(projectPath, '.vscode');
+  const snippetsDir = path.join(vscodeDir, 'snippets');
   
-  if (!await fileExists(notesPath)) {
-    return {
-      exists: false,
-      results: [],
-      message: '个人笔记不存在',
-    };
+  if (!await fileExists(snippetsDir)) {
+    return { results: [] };
   }
 
-  const content = await fs.readFile(notesPath, 'utf-8');
-  
-  // 按章节分割
-  const sections = content.split(/^## /m).filter(s => s.trim());
   const results = [];
+  const categories = ['component', 'function', 'hook', 'style', 'tip', 'solution'];
 
-  // 在每个章节中搜索
-  for (const section of sections) {
-    const lines = section.split('\n');
-    const categoryName = lines[0].trim();
+  // 搜索所有分类
+  for (const category of categories) {
+    const categoryDir = path.join(snippetsDir, category);
+    if (!await fileExists(categoryDir)) continue;
+
+    const files = await scanMarkdownFiles(categoryDir);
     
-    // 提取所有三级标题（每个片段）
-    const snippets = section.split(/^### /m).filter(s => s.trim() && !s.startsWith(categoryName));
-    
-    for (const snippet of snippets) {
-      const snippetLines = snippet.split('\n');
-      const title = snippetLines[0].trim();
+    for (const file of files) {
+      const filePath = path.join(categoryDir, file.name);
+      const content = await fs.readFile(filePath, 'utf-8');
       
-      // 检查关键词是否在标题或内容中
-      if (snippet.toLowerCase().includes(keyword.toLowerCase())) {
-        // 提取描述
-        const descLine = snippetLines.find(l => l.startsWith('**描述**:'));
-        const description = descLine ? descLine.replace('**描述**:', '').trim() : '';
-        
-        // 提取标签
-        const tagsLine = snippetLines.find(l => l.startsWith('**标签**:'));
-        const tags = tagsLine 
-          ? tagsLine.replace('**标签**:', '').split(',').map(t => t.trim().replace(/`/g, ''))
-          : [];
-
+      // 搜索标题、描述和代码内容
+      if (content.toLowerCase().includes(keyword.toLowerCase())) {
         results.push({
-          category: categoryName,
-          title,
-          description,
-          tags,
-          preview: snippet.slice(0, 200) + (snippet.length > 200 ? '...' : ''),
+          title: file.title,
+          category: getCategoryName(category),
+          path: `./snippets/${category}/${file.name}`,
+          filePath,
         });
       }
     }
   }
 
-  return {
-    exists: true,
-    keyword,
-    count: results.length,
-    results,
-  };
+  return { results, count: results.length };
 }
 
 /**
- * 列出所有片段的概要
+ * 列出所有个人片段概要
  */
 export async function listPersonalSnippets(projectPath) {
-  const notesPath = path.join(projectPath, '.vscode', 'PERSONAL_DEV_NOTES.md');
+  const vscodeDir = path.join(projectPath, '.vscode');
+  const snippetsDir = path.join(vscodeDir, 'snippets');
   
-  if (!await fileExists(notesPath)) {
-    return {
-      exists: false,
-      categories: [],
-      total: 0,
-    };
+  if (!await fileExists(snippetsDir)) {
+    return { categories: [], totalCount: 0 };
   }
 
-  const content = await fs.readFile(notesPath, 'utf-8');
-  
-  // 按章节统计
-  const categories = [
-    { name: 'component', title: '常用组件', icon: '📦', count: 0 },
-    { name: 'function', title: '工具函数', icon: '🛠️', count: 0 },
-    { name: 'hook', title: '自定义 Hooks', icon: '🎣', count: 0 },
-    { name: 'style', title: '样式方案', icon: '🎨', count: 0 },
-    { name: 'tip', title: '开发技巧', icon: '💡', count: 0 },
-    { name: 'solution', title: '问题解决方案', icon: '🐛', count: 0 },
-  ];
+  const categories = [];
+  const categoryTypes = ['component', 'function', 'hook', 'style', 'tip', 'solution'];
+  let totalCount = 0;
 
-  let total = 0;
+  for (const category of categoryTypes) {
+    const categoryDir = path.join(snippetsDir, category);
+    if (!await fileExists(categoryDir)) {
+      categories.push({
+        name: getCategoryName(category),
+        type: category,
+        count: 0,
+        snippets: [],
+      });
+      continue;
+    }
+
+    const files = await scanMarkdownFiles(categoryDir);
+    totalCount += files.length;
+
+    categories.push({
+      name: getCategoryName(category),
+      type: category,
+      count: files.length,
+      snippets: files.map(f => ({
+        title: f.title,
+        path: `./snippets/${category}/${f.name}`,
+      })),
+    });
+  }
+
+  return { categories, totalCount };
+}
+
+/**
+ * 更新个人笔记主索引
+ */
+async function updatePersonalNotesIndex(vscodeDir) {
+  const snippetsDir = path.join(vscodeDir, 'snippets');
+  const indexPath = path.join(vscodeDir, 'PERSONAL_NOTES.md');
+
+  const categories = [];
+  const categoryTypes = ['component', 'function', 'hook', 'style', 'tip', 'solution'];
+  
+  for (const category of categoryTypes) {
+    const categoryDir = path.join(snippetsDir, category);
+    if (!await fileExists(categoryDir)) {
+      categories.push({
+        name: getCategoryName(category),
+        type: category,
+        count: 0,
+        files: [],
+      });
+      continue;
+    }
+
+    const files = await scanMarkdownFiles(categoryDir);
+    
+    categories.push({
+      name: getCategoryName(category),
+      type: category,
+      count: files.length,
+      files: files.map(f => ({
+        title: f.title,
+        path: `./snippets/${category}/${f.name}`,
+      })),
+    });
+  }
+
+  // 生成索引内容
+  let content = `# 个人开发笔记
+
+> 记录个人收集的代码片段、工具函数、组件等
+
+## 📚 分类导航
+
+`;
 
   for (const cat of categories) {
-    const regex = new RegExp(`## ${cat.icon} ${cat.title}([\\s\\S]*?)(?=^## |$)`, 'm');
-    const match = content.match(regex);
-    
-    if (match) {
-      // 统计该章节中的三级标题数量
-      const snippetCount = (match[0].match(/^### /gm) || []).length;
-      cat.count = snippetCount;
-      total += snippetCount;
+    content += `### ${cat.name} (${cat.count})\n\n`;
+    if (cat.files.length === 0) {
+      content += `_暂无片段_\n\n`;
+    } else {
+      cat.files.forEach(file => {
+        content += `- [${file.title}](${file.path})\n`;
+      });
+      content += '\n';
     }
   }
 
-  return {
-    exists: true,
-    categories: categories.filter(c => c.count > 0),
-    total,
+  content += `---\n\n`;
+  content += `**总计**: ${categories.reduce((sum, c) => sum + c.count, 0)} 个片段\n\n`;
+  content += `*最后更新: ${new Date().toISOString().split('T')[0]}*\n`;
+
+  await fs.writeFile(indexPath, content, 'utf-8');
+}
+
+/**
+ * 获取分类中文名称
+ */
+function getCategoryName(category) {
+  const names = {
+    component: '组件',
+    function: '工具函数',
+    hook: 'Hooks',
+    style: '样式',
+    tip: '技巧',
+    solution: '问题解决',
   };
+  return names[category] || category;
 }

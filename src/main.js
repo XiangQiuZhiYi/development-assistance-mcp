@@ -4,7 +4,6 @@ import { pathToFileURL } from 'node:url';
 import { z } from 'zod';
 import {
   generateProjectGuide,
-  writeGuideToFile,
   readProjectGuide,
   addUseCaseToGuide,
   updateGuideSection,
@@ -310,7 +309,6 @@ export async function startServer() {
     async ({ projectPath }) => {
       try {
         const result = await generateProjectGuide(projectPath);
-        const guidePath = await writeGuideToFile(projectPath, result.content);
 
         return {
           content: [
@@ -320,7 +318,7 @@ export async function startServer() {
                 {
                   success: true,
                   message: '项目指南生成成功',
-                  guidePath,
+                  guidePath: result.guidePath,
                   summary: {
                     framework: result.analysis.project.framework,
                     routing: result.analysis.routing.framework,
@@ -365,7 +363,7 @@ export async function startServer() {
     },
     async ({ projectPath, section }) => {
       try {
-        const guide = await readProjectGuide(projectPath);
+        const guide = await readProjectGuide(projectPath, section);
 
         if (!guide.exists) {
           return {
@@ -382,23 +380,11 @@ export async function startServer() {
           };
         }
 
-        let content = guide.content;
-
-        // 如果指定了章节，提取该章节
-        if (section) {
-          const sectionRegex = new RegExp(
-            `###?\\s+\\d+\\.?\\d*\\s+${section}([\\s\\S]*?)(?=###|##|$)`,
-            'i'
-          );
-          const match = content.match(sectionRegex);
-          content = match ? match[0] : `未找到章节: ${section}`;
-        }
-
         return {
           content: [
             {
               type: 'text',
-              text: content,
+              text: guide.content,
             },
           ],
         };
@@ -697,14 +683,14 @@ export async function startServer() {
     },
     async ({ projectPath, category }) => {
       try {
-        const result = await readPersonalNotes(projectPath, { category });
+        const result = await readPersonalNotes(projectPath, category);
 
         if (!result.exists) {
           return {
             content: [
               {
                 type: 'text',
-                text: result.message,
+                text: result.content || 'PERSONAL_NOTES.md 不存在',
               },
             ],
           };
