@@ -33,12 +33,23 @@ MCP-XB 提供了 7 个即用型对话模板，无需记忆命令：
 ```
 your-project/
 ├── .vscode/
+│   ├── CORE_GUIDELINES.md        ← 核心必读（最高优先级）🆕
 │   ├── PROJECT_GUIDE.md          ← 项目规范（团队共享）
 │   └── PERSONAL_DEV_NOTES.md     ← 个人笔记（个人使用）
 ├── src/
 ├── package.json
 └── ...
 ```
+
+### 📊 文档优先级和作用
+
+| 文档 | 优先级 | 作用 | Git 提交 |
+|------|--------|------|---------|
+| CORE_GUIDELINES.md 🆕 | ⭐⭐⭐ 最高 | AI 必须遵守的强制性规范 | ✅ 建议提交 |
+| PROJECT_GUIDE.md | ⭐⭐ 中等 | 项目技术栈和开发规范 | ✅ 建议提交 |
+| PERSONAL_DEV_NOTES.md | ⭐ 参考 | 个人代码片段库 | ❌ 建议忽略 |
+
+**AI 读取顺序**: CORE_GUIDELINES.md → PROJECT_GUIDE.md → PERSONAL_DEV_NOTES.md
 
 ## 🔧 版本控制建议
 
@@ -47,7 +58,7 @@ your-project/
 在项目的 `.gitignore` 中添加：
 
 ```gitignore
-# 忽略个人笔记，保留项目指南
+# 保留核心必读和项目指南，忽略个人笔记
 .vscode/PERSONAL_DEV_NOTES.md
 ```
 
@@ -110,7 +121,16 @@ your-project/
 
 生成：`.vscode/PROJECT_GUIDE.md`
 
-### 2. 添加个人代码片段
+#### 2. 设置核心必读 🆕
+```javascript
+使用 set_core_guidelines 工具
+- 内容：强制性开发规范（禁止事项、核心约定等）
+```
+
+生成：`.vscode/CORE_GUIDELINES.md`  
+**作用**：AI 生成代码前必须遵守的强制性规范
+
+#### 3. 添加个人代码片段
 ```javascript
 使用 add_personal_snippet 工具
 - 分类：component（组件）
@@ -120,13 +140,13 @@ your-project/
 
 添加到：`.vscode/PERSONAL_DEV_NOTES.md`
 
-### 3. 搜索代码片段
+#### 4. 搜索代码片段
 ```javascript
 使用 search_personal_snippets 工具
 - 关键词：toast
 ```
 
-### 4. 更新项目指南
+#### 5. 更新项目指南
 ```javascript
 使用 update_guide_section 工具
 - 章节：路由系统
@@ -134,6 +154,32 @@ your-project/
 ```
 
 ## 💡 使用技巧
+
+### 核心必读的典型用法 🆕
+
+**场景 1：禁用某些技术**
+```markdown
+## 禁止事项
+- ❌ 禁止使用 .vue 文件，全部使用 TSX
+- ❌ 禁止使用 v-model 控制弹窗
+- ❌ 禁止使用 any 类型
+```
+
+**场景 2：强制性约定**
+```markdown
+## 强制规范
+- ✅ 所有弹窗组件必须使用 handleOpen 方法
+- ✅ 组件名称必须 PascalCase
+- ✅ API 请求必须使用统一的 request 函数
+```
+
+**场景 3：安全规范**
+```markdown
+## 安全要求
+- 🔒 禁止使用 eval() 和 Function() 构造函数
+- 🔒 所有用户输入必须经过验证
+- 🔒 敏感信息不得硬编码
+```
 
 ### 跨项目复用个人笔记
 

@@ -45,7 +45,7 @@ ${notes ? `## 使用说明\n\n${notes}\n` : ''}
   await fs.writeFile(filePath, content, 'utf-8');
 
   // 更新主索引
-  await updatePersonalNotesIndex(vscodeDir);
+  await updatePersonalNotesIndexWithCore(vscodeDir);
 
   const indexPath = path.join(vscodeDir, 'PERSONAL_NOTES.md');
 
@@ -114,7 +114,13 @@ export async function searchPersonalSnippets(projectPath, keyword) {
   const snippetsDir = path.join(vscodeDir, 'snippets');
   
   if (!await fileExists(snippetsDir)) {
-    return { results: [] };
+    return { 
+      exists: false,
+      keyword,
+      results: [],
+      count: 0,
+      message: '个人笔记尚未创建，添加第一个片段后将自动创建',
+    };
   }
 
   const results = [];
@@ -143,7 +149,12 @@ export async function searchPersonalSnippets(projectPath, keyword) {
     }
   }
 
-  return { results, count: results.length };
+  return { 
+    exists: true,
+    keyword,
+    results, 
+    count: results.length,
+  };
 }
 
 /**
@@ -154,7 +165,12 @@ export async function listPersonalSnippets(projectPath) {
   const snippetsDir = path.join(vscodeDir, 'snippets');
   
   if (!await fileExists(snippetsDir)) {
-    return { categories: [], totalCount: 0 };
+    return { 
+      exists: false,
+      categories: [], 
+      totalCount: 0,
+      message: '个人笔记不存在，添加第一个片段后将自动创建',
+    };
   }
 
   const categories = [];
@@ -187,7 +203,11 @@ export async function listPersonalSnippets(projectPath) {
     });
   }
 
-  return { categories, totalCount };
+  return { 
+    exists: true,
+    categories, 
+    totalCount,
+  };
 }
 
 /**
@@ -231,6 +251,154 @@ async function updatePersonalNotesIndex(vscodeDir) {
 > 记录个人收集的代码片段、工具函数、组件等
 
 ## 📚 分类导航
+
+`;
+
+  for (const cat of categories) {
+    content += `### ${cat.name} (${cat.count})\n\n`;
+    if (cat.files.length === 0) {
+      content += `_暂无片段_\n\n`;
+    } else {
+      cat.files.forEach(file => {
+        content += `- [${file.title}](${file.path})\n`;
+      });
+      content += '\n';
+    }
+  }
+
+  content += `---\n\n`;
+  content += `**总计**: ${categories.reduce((sum, c) => sum + c.count, 0)} 个片段\n\n`;
+  content += `*最后更新: ${new Date().toISOString().split('T')[0]}*\n`;
+
+  await fs.writeFile(indexPath, content, 'utf-8');
+}
+
+/**
+ * 设置核心必读内容
+ */
+export async function setCoreGuidelines(projectPath, content) {
+  const vscodeDir = path.join(projectPath, '.vscode');
+  const coreFilePath = path.join(vscodeDir, 'CORE_GUIDELINES.md');
+  
+  await ensureDir(vscodeDir);
+
+  // 生成核心必读内容
+  const fullContent = `# 🚨 核心必读 - 代码生成强制规范
+
+> **重要提示**: AI 在生成任何代码之前，必须先阅读本文档！
+> 
+> 本文档包含项目的核心开发规范和强制要求，违反这些规范将导致代码不可用。
+
+---
+
+## 📋 核心规范
+
+${content}
+
+---
+
+*最后更新: ${new Date().toISOString().split('T')[0]}*
+
+**使用说明**:
+- 此文档由开发者手动维护
+- AI 必须在生成代码前完整阅读
+- 与 PROJECT_GUIDE.md 配合使用，本文档优先级更高
+`;
+
+  await fs.writeFile(coreFilePath, fullContent, 'utf-8');
+
+  // 更新个人笔记索引，添加核心必读链接
+  await updatePersonalNotesIndexWithCore(vscodeDir);
+
+  return {
+    success: true,
+    filePath: coreFilePath,
+    message: '核心必读内容已设置',
+  };
+}
+
+/**
+ * 读取核心必读内容
+ */
+export async function readCoreGuidelines(projectPath) {
+  const vscodeDir = path.join(projectPath, '.vscode');
+  const coreFilePath = path.join(vscodeDir, 'CORE_GUIDELINES.md');
+  
+  if (!await fileExists(coreFilePath)) {
+    return {
+      exists: false,
+      path: coreFilePath,
+      content: null,
+      message: '核心必读文档尚未创建，建议使用 set_core_guidelines 工具创建',
+    };
+  }
+
+  const content = await fs.readFile(coreFilePath, 'utf-8');
+  return {
+    exists: true,
+    path: coreFilePath,
+    content,
+  };
+}
+
+/**
+ * 更新个人笔记索引（包含核心必读）
+ */
+async function updatePersonalNotesIndexWithCore(vscodeDir) {
+  const snippetsDir = path.join(vscodeDir, 'snippets');
+  const indexPath = path.join(vscodeDir, 'PERSONAL_NOTES.md');
+  const coreFilePath = path.join(vscodeDir, 'CORE_GUIDELINES.md');
+  const hasCoreGuidelines = await fileExists(coreFilePath);
+
+  const categories = [];
+  const categoryTypes = ['component', 'function', 'hook', 'style', 'tip', 'solution'];
+  
+  for (const category of categoryTypes) {
+    const categoryDir = path.join(snippetsDir, category);
+    if (!await fileExists(categoryDir)) {
+      categories.push({
+        name: getCategoryName(category),
+        type: category,
+        count: 0,
+        files: [],
+      });
+      continue;
+    }
+
+    const files = await scanMarkdownFiles(categoryDir);
+    
+    categories.push({
+      name: getCategoryName(category),
+      type: category,
+      count: files.length,
+      files: files.map(f => ({
+        title: f.title,
+        path: `./snippets/${category}/${f.name}`,
+      })),
+    });
+  }
+
+  // 生成索引内容
+  let content = `# 个人开发笔记
+
+> 记录个人收集的代码片段、工具函数、组件等
+
+`;
+
+  // 如果存在核心必读，优先显示
+  if (hasCoreGuidelines) {
+    content += `## 🚨 核心必读（优先级最高）
+
+⚠️ **重要**: AI 生成代码前必须先阅读此文档！
+
+- [**核心必读 - 代码生成强制规范**](./CORE_GUIDELINES.md) ⭐
+
+---
+
+`;
+  }
+
+  content += `## 📚 分类导航
 
 `;
 

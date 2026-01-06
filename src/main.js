@@ -14,6 +14,8 @@ import {
   readPersonalNotes,
   searchPersonalSnippets,
   listPersonalSnippets,
+  setCoreGuidelines,
+  readCoreGuidelines,
 } from './tools/personalNotes.js';
 
 export async function startServer() {
@@ -789,19 +791,19 @@ export async function startServer() {
             content: [
               {
                 type: 'text',
-                text: '个人笔记不存在，添加第一个片段后将自动创建',
+                text: result.message || '个人笔记不存在，添加第一个片段后将自动创建',
               },
             ],
           };
         }
 
         let summary = `# 个人笔记概要\n\n`;
-        summary += `**总计**: ${result.total} 个片段\n\n`;
+        summary += `**总计**: ${result.totalCount} 个片段\n\n`;
         
         if (result.categories.length > 0) {
           summary += `## 分类统计\n\n`;
           result.categories.forEach(cat => {
-            summary += `- ${cat.icon} **${cat.title}**: ${cat.count} 个\n`;
+            summary += `- **${cat.name}**: ${cat.count} 个\n`;
           });
         }
 
@@ -810,6 +812,95 @@ export async function startServer() {
             {
               type: 'text',
               text: summary,
+            },
+          ],
+        };
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify({
+                success: false,
+                error: error.message,
+              }),
+            },
+          ],
+          isError: true,
+        };
+      }
+    }
+  );
+
+  // 工具 11: 设置核心必读内容
+  server.tool(
+    'set_core_guidelines',
+    '设置核心必读内容 - AI 在生成任何代码前必须阅读的强制规范',
+    {
+      projectPath: z.string().describe('项目根目录的绝对路径'),
+      content: z.string().describe('核心必读内容（Markdown 格式），包含强制性开发规范、禁止事项、核心约定等'),
+    },
+    async ({ projectPath, content }) => {
+      try {
+        const result = await setCoreGuidelines(projectPath, content);
+
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify({
+                success: result.success,
+                message: result.message,
+                filePath: result.filePath,
+                notice: '⚠️ AI 在生成代码前会优先读取此文档，请确保内容准确',
+              }, null, 2),
+            },
+          ],
+        };
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify({
+                success: false,
+                error: error.message,
+              }),
+            },
+          ],
+          isError: true,
+        };
+      }
+    }
+  );
+
+  // 工具 12: 读取核心必读内容
+  server.tool(
+    'read_core_guidelines',
+    '读取核心必读内容 - 获取 AI 必须遵循的强制性开发规范',
+    {
+      projectPath: z.string().describe('项目根目录的绝对路径'),
+    },
+    async ({ projectPath }) => {
+      try {
+        const result = await readCoreGuidelines(projectPath);
+
+        if (!result.exists) {
+          return {
+            content: [
+              {
+                type: 'text',
+                text: result.message,
+              },
+            ],
+          };
+        }
+
+        return {
+          content: [
+            {
+              type: 'text',
+              text: result.content,
             },
           ],
         };
